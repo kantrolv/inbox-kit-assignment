@@ -1,8 +1,8 @@
 // Game configuration. The backend is the single source of truth and sends the
 // relevant pieces to the frontend, so the client hardcodes nothing.
 
-export const COLS = 40;
-export const ROWS = 24;
+export const COLS = 50;
+export const ROWS = 30;
 
 // Lock power-up: a locked tile is protected for this long, and a player can
 // place one lock this often. (Normal claims have no cooldown — instant.)

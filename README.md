@@ -8,6 +8,12 @@ everyone else's cursor moving in real time.
 
 **Live demo:** https://inbox-kit-assignment-1.onrender.com/
 
+
+
+Uploading Screen Recording 2026-06-19 at 12.21.23 PM.mov…
+
+
+
 ---
 
 ## Table of contents

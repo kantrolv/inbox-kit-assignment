@@ -1,3 +1,5 @@
+
+
 # Claimground
 
 A real-time, multiplayer "capture the grid" web app. Anyone who opens the site
@@ -10,7 +12,8 @@ everyone else's cursor moving in real time.
 
 
 
-Uploading Screen Recording 2026-06-19 at 12.21.23 PM.mov…
+https://github.com/user-attachments/assets/335e97b2-b4f7-40fd-a1c9-70a08d123943
+
 
 
 

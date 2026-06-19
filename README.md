@@ -1,7 +1,7 @@
 # Claimground
 
 A real-time shared grid. Anyone who opens the site picks a name and a unique
-color, then captures tiles on a live 40×24 board. Every action is broadcast to
+color, then captures tiles on a live 50×30 board. Every action is broadcast to
 all players instantly, you can see everyone's cursor moving in real time, and
 you can claim, lock, or erase tiles.
 
@@ -52,6 +52,8 @@ Then try:
 - **Erase** — switch to Erase mode and click one of *your* tiles to remove it.
 - **Cursors** — move your mouse over the board; the other windows see your
   cursor and name moving live.
+- **Theme** — toggle light / dark with the button in the top bar (your choice
+  is remembered).
 - **Leave & change name** — removes all your tiles, frees your color, and
   returns you to the entry screen so you can rejoin with a new name/color.
 - Refresh a window: you keep your identity, color, and tiles.
@@ -73,10 +75,14 @@ leaderboard row instead of splitting into a new "owner" each reconnect. The
 same id lets a refresh re-claim the player's own color and shares one identity
 across that player's tabs.
 
-**Colors are unique per player.** Taken colors are disabled live in the entry
-screen, and the server rejects a taken color (first to ask wins). When a player
-leaves or closes their last tab, the color frees up again. No accounts or
-passwords — the per-browser id keeps identity stable without that overhead.
+**Names and colors are unique per active player.** The entry screen disables
+taken colors live, and the server rejects a name or color already in use by
+another player (your own refresh is exempt). When a player disconnects, their
+tiles and color are held for a short **grace period** — a refresh reclaims
+them seamlessly, but if they don't return their tiles are cleared and their
+color frees up. This keeps the board, the colors, and the leaderboard free of
+orphaned entries. No accounts or passwords — the per-browser id keeps identity
+stable without that overhead.
 
 **Rendering is fine-grained.** The board renders once; each tile subscribes
 (via `useSyncExternalStore`) to *only its own* coordinate through a small store

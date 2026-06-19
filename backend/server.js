@@ -7,6 +7,9 @@ import {
 } from "./config.js";
 
 const PORT = process.env.PORT || 3001;
+// When a player disconnects, hold their tiles + color this long so a refresh
+// reclaims them. If they don't return, everything is cleaned up.
+const GRACE_MS = Number(process.env.GRACE_MS) || 10000;
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,7 +18,7 @@ app.get("/", (_req, res) => res.send("Claimground backend is running."));
 
 /* STATE — single source of truth. Identity keyed on persistent clientId. */
 const tiles = new Map();          // "x:y" -> { color, name, ownerId, ts, lockedUntil }
-const players = new Map();         // clientId -> { clientId, name, color, lastLock, conns }
+const players = new Map();         // clientId -> { clientId, name, color, lastLock, conns, removeTimer }
 const socketToClient = new Map();  // socket.id -> clientId
 
 function snapshot() {
@@ -24,7 +27,13 @@ function snapshot() {
   return obj;
 }
 function takenColors() {
+  // A color is "taken" if any player (including one in the grace window) holds it.
   return [...new Set([...players.values()].map((p) => p.color))];
+}
+function onlineCount() {
+  let n = 0;
+  for (const p of players.values()) if (p.conns > 0) n++;
+  return n;
 }
 function leaderboard(limit = 6) {
   const counts = new Map();
@@ -64,7 +73,7 @@ io.on("connection", (socket) => {
     lockCooldownMs: LOCK_COOLDOWN_MS,
     palette: PALETTE,
     takenColors: takenColors(),
-    online: players.size,
+    online: onlineCount(),
     leaderboard: leaderboard(),
   });
 
@@ -77,6 +86,16 @@ io.on("connection", (socket) => {
       socket.emit("join_rejected", { reason: "bad_color", takenColors: takenColors() });
       return;
     }
+    // Name must be free among OTHER players (your own refresh is fine).
+    const lname = name.toLowerCase();
+    const nameClash = [...players.values()].some(
+      (p) => p.clientId !== clientId && p.name.toLowerCase() === lname
+    );
+    if (nameClash) {
+      socket.emit("join_rejected", { reason: "name_taken", takenColors: takenColors() });
+      return;
+    }
+    // Color must be free among OTHER players.
     const holder = [...players.values()].find((p) => p.color === color);
     if (holder && holder.clientId !== clientId) {
       socket.emit("join_rejected", { reason: "color_taken", takenColors: takenColors() });
@@ -84,13 +103,14 @@ io.on("connection", (socket) => {
     }
 
     let p = players.get(clientId);
-    if (!p) p = { clientId, name, color, lastLock: 0, conns: 0 };
+    if (!p) p = { clientId, name, color, lastLock: 0, conns: 0, removeTimer: null };
+    if (p.removeTimer) { clearTimeout(p.removeTimer); p.removeTimer = null; } // back in time
     p.name = name; p.color = color; p.conns += 1;
     players.set(clientId, p);
     socketToClient.set(socket.id, clientId);
 
     socket.emit("joined", { you: { id: clientId, name: p.name, color: p.color } });
-    io.emit("presence", { online: players.size });
+    io.emit("presence", { online: onlineCount() });
     io.emit("taken_colors", { takenColors: takenColors() });
     io.emit("leaderboard", { top: leaderboard() });
   });
@@ -127,7 +147,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Normal claim — instant, no cooldown.
     const tile = { color: me.color, name: me.name, ownerId: clientId, ts: now, lockedUntil: 0 };
     tiles.set(id, tile);
     io.emit("tile_update", { tileId: id, ...tile });
@@ -140,7 +159,7 @@ io.on("connection", (socket) => {
     const id = payload && payload.tileId;
     if (!isValidTile(id)) return;
     const t = tiles.get(id);
-    if (!t || t.ownerId !== clientId) return; // only your own tiles
+    if (!t || t.ownerId !== clientId) return;
     tiles.delete(id);
     io.emit("tiles_cleared", { tileIds: [id] });
     io.emit("leaderboard", { top: leaderboard() });
@@ -149,13 +168,15 @@ io.on("connection", (socket) => {
   socket.on("leave", () => {
     const clientId = socketToClient.get(socket.id);
     if (!clientId) return;
+    const p = players.get(clientId);
+    if (p && p.removeTimer) clearTimeout(p.removeTimer);
     const cleared = clearTilesOf(clientId);
     players.delete(clientId);
     for (const [sid, cid] of socketToClient) {
       if (cid === clientId) socketToClient.delete(sid);
     }
     if (cleared.length) io.emit("tiles_cleared", { tileIds: cleared });
-    io.emit("presence", { online: players.size });
+    io.emit("presence", { online: onlineCount() });
     io.emit("taken_colors", { takenColors: takenColors() });
     io.emit("leaderboard", { top: leaderboard() });
     io.emit("cursor_gone", { id: clientId });
@@ -183,10 +204,20 @@ io.on("connection", (socket) => {
     const p = players.get(clientId);
     if (p) {
       p.conns -= 1;
-      if (p.conns <= 0) players.delete(clientId);
+      if (p.conns <= 0 && !p.removeTimer) {
+        // Hold their tiles/color briefly; clean up only if they don't return.
+        p.removeTimer = setTimeout(() => {
+          const cleared = clearTilesOf(clientId);
+          players.delete(clientId);
+          if (cleared.length) io.emit("tiles_cleared", { tileIds: cleared });
+          io.emit("presence", { online: onlineCount() });
+          io.emit("taken_colors", { takenColors: takenColors() });
+          io.emit("leaderboard", { top: leaderboard() });
+          io.emit("cursor_gone", { id: clientId });
+        }, GRACE_MS);
+      }
     }
-    io.emit("presence", { online: players.size });
-    io.emit("taken_colors", { takenColors: takenColors() });
+    io.emit("presence", { online: onlineCount() });
     io.emit("cursor_gone", { id: clientId });
   });
 });

@@ -89,9 +89,11 @@ export function useGrid() {
     socket.on("join_rejected", (r) => {
       setPhase("lobby");
       setTakenColors(r.takenColors || []);
-      setLobbyMessage(r.reason === "color_taken"
-        ? "That color was just taken — pick another."
-        : "Please pick a color.");
+      setLobbyMessage(
+        r.reason === "color_taken" ? "That color is taken — pick another."
+          : r.reason === "name_taken" ? "That name is taken — pick another."
+            : "Please pick a name and color."
+      );
     });
 
     socket.on("taken_colors", (d) => setTakenColors(d.takenColors || []));
